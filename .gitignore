@@ -2,3 +2,4 @@
 shell_exporter
 *.tar.gz
 vendor
+output

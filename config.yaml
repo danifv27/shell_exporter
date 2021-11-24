@@ -2,16 +2,28 @@ shells:
   - name: bctf_remaining_requests_hours_total
     const_labels:
       env: sit
-      service: bct-reference-data-service-api
-    labels_regexp: (?P<apikey>.+):x-ratelimit-remaining-hour:(?P<value>[0-9.]+)
+    labels_regexp: (?P<api>.+):(?P<apikey>.+):x-ratelimit-remaining-hour:(?P<value>[0-9.]+)
     help: "show api remaining requests by apikey."
-    cmd: ./metrics/bctf.sh --url https://sit-bctf.api.3stripes.io/bct-reference-data-service-api/actuator/health
+    cmd: /app/bin/bctf-api.sh --target=/app/config/target.txt
     bin: /bin/bash
   - name: bctf_remaining_requests_hours_limit
     const_labels:
       env: sit
-      service: bct-reference-data-service-api
-    labels_regexp: (?P<apikey>.+):x-ratelimit-limit-hour:(?P<value>[0-9.]+)
+    labels_regexp: (?P<api>.+):(?P<apikey>.+):x-ratelimit-remaining-hour:(?P<value>[0-9.]+)
     help: "show the number of requests allowed per hour."
-    cmd: ./metrics/bctf.sh --url https://sit-bctf.api.3stripes.io/bct-reference-data-service-api/actuator/health
+    cmd: /app/bin/bctf-api.sh --target=/app/config/target.txt
+    bin: /bin/bash
+  - name: bctf_remaining_requests_seconds_total
+    const_labels:
+      env: sit
+    labels_regexp: (?P<api>.+):(?P<apikey>.+):x-ratelimit-remaining-hour:(?P<value>[0-9.]+)
+    help: "show api remaining requests by apikey."
+    cmd: /app/bin/bctf-api.sh --target=/app/config/target.txt
+    bin: /bin/bash
+  - name: bctf_remaining_requests_seconds_limit
+    const_labels:
+      env: sit
+    labels_regexp: (?P<api>.+):(?P<apikey>.+):x-ratelimit-remaining-hour:(?P<value>[0-9.]+)
+    help: "show the number of requests allowed per second."
+    cmd: /app/bin/bctf-api.sh --target=/app/config/target.txt
     bin: /bin/bash

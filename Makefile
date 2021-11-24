@@ -13,8 +13,7 @@ BIN ?= shell-exporter
 PKG := github.com/danifv27/shell-exporter
 
 # Where to push the docker image.
-DOCKER_REGISTRY ?= registry.tools.3stripes.net
-# DOCKER_REGISTRY ?= registry.hub.docker.com
+DOCKER_REGISTRY ?= registry.hub.docker.com
 
 # Which architecture to build - see $(ALL_ARCH) for options.
 # if the 'local' rule is being run, detect the ARCH from 'go env'

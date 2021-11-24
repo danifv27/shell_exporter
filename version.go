@@ -19,7 +19,7 @@ var (
 var (
 	buildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "build_info",
+			Name: "shell_exporter_build_info",
 			Help: "A metric with a constant '1' value labeled by version, revision, branch and goversion from which exporter_exporter was built.",
 		},
 		[]string{"version", "revision", "branch", "goversion"},

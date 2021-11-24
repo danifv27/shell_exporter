@@ -1,0 +1,38 @@
+# build stage
+FROM golang:1.17-alpine3.14 AS build-env
+
+ADD . /src
+RUN sed -i 's/https/http/' /etc/apk/repositories
+RUN apk add --update --no-cache openssl git make
+RUN cd /src && make build-linux-amd64
+
+# final stage
+FROM alpine:3.14
+
+RUN mkdir -p /app/bin; mkdir -p /app/config
+# Fix supervisord "Cannot open an HTTP server: socket.error reported errno.EACCES" error
+RUN chmod 777 /run
+
+ARG user_name=exporter
+ARG user_id=42924
+
+RUN sed -i 's/https/http/' /etc/apk/repositories
+# Adding shadow package to install necessary commands in order to create users
+RUN \
+	apk --update --no-cache add shadow bash \
+	&& useradd -u $user_id -c "$user_name System Account" -U -m $user_name
+
+COPY --from=build-env /src/output/linux/amd64/bin/shell-exporter /app/bin
+COPY --from=build-env /src/metrics/*.sh /app/bin
+COPY --from=build-env /src/config.yaml /app/config
+
+RUN chown 42924 -R /app
+
+WORKDIR /app
+# Use an unprivileged user.
+USER $user_id
+
+# executable
+ENTRYPOINT [ "/app/bin/shell-exporter" ]
+# arguments that can be overridden
+CMD ["-version"]

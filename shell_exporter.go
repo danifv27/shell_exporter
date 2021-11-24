@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -38,7 +40,7 @@ type Shell struct {
 
 	VariableLabels []string
 
-	Metrics []prometheus.Metric
+	Metrics   []prometheus.Metric
 	Output    string
 	MatchMaps []map[string]string
 
@@ -68,7 +70,7 @@ func findStringSubmatchMaps(re *regexp.Regexp, s string) (matchMaps []map[string
 	return
 }
 
-func NewShellManger() (shellManger *ShellManger, err error){
+func NewShellManger() (shellManger *ShellManger, err error) {
 
 	yamlFile, err := ioutil.ReadFile(*configFile)
 	if err != nil {
@@ -108,7 +110,6 @@ func (s *ShellManger) Collect(ch chan<- prometheus.Metric) {
 
 func (s *ShellManger) runShells(ch chan<- prometheus.Metric) {
 	var wg sync.WaitGroup
-
 
 	for _, shell := range s.Shells {
 		shell.Metrics = make([]prometheus.Metric, 0)
@@ -184,7 +185,6 @@ func (s *Shell) collect() {
 		valueStr := matchMap["value"]
 		value, _ := strconv.ParseFloat(valueStr, 64)
 
-
 		metric := prometheus.MustNewConstMetric(
 			s.Desc,
 			prometheus.GaugeValue,
@@ -198,6 +198,11 @@ func (s *Shell) collect() {
 
 func main() {
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Fprintf(os.Stderr, "Version: %s\n", versionStr())
+		return
+	}
 
 	newShellManger, err := NewShellManger()
 	if err != nil {

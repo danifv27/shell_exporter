@@ -1,68 +1,171 @@
-# Copyright 2015 The Prometheus Authors
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+ifeq ($(V),1)
+  Q =
+  PROGRESS = --progress plain
+else
+  Q = @
+  PROGRESS = 
+endif
 
-GO     := GO111MODULE=on go
-GOPATH := $(shell go env GOPATH)
-PROMU  := $(GOPATH)/bin/promu
+# The binary to build (just the basename).
+BIN ?= shell-exporter
 
-PREFIX            ?= $(shell pwd)
-BIN_DIR           ?= $(shell pwd)
-DOCKER_IMAGE_NAME ?= ozhiwei/shell_exporter
-DOCKER_IMAGE_TAG  ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
+# This repo's root import path (under GOPATH).
+PKG := github.com/danifv27/shell-exporter
 
+# Where to push the docker image.
+DOCKER_REGISTRY ?= registry.hub.docker.com
 
-all: format build test
+# Which architecture to build - see $(ALL_ARCH) for options.
+# if the 'local' rule is being run, detect the ARCH from 'go env'
+# if it wasn't specified by the caller.
+local : ARCH ?= $(shell go env GOOS)-$(shell go env GOARCH)
+ARCH ?= linux-amd64
 
-style:
-	@echo ">> checking code style"
-	@! gofmt -d $(shell find . -path ./vendor -prune -o -name '*.go' -print) | grep '^'
+REVISION := $(shell echo $$(git rev-parse HEAD) ||echo "Unknown Revision")
 
-test:
-	@echo ">> running tests"
-	@$(GO) test ./...
+BUILDINFO_TAG ?= $(shell echo $$(git describe --long --all | tr '/' '-')$$(git diff-index --quiet HEAD -- || echo '-dirty-'$$(git diff-index -u HEAD | openssl sha1 | cut -c 10-17)))
+VCS_TAG := $(shell git describe --tags)
+ifeq ($(VCS_TAG),)
+VCS_TAG := $(BUILDINFO_TAG)
+endif
 
-format:
-	@echo ">> formatting code"
-	@$(GO) fmt ./...
+ifeq ($(VERSION),)
+VERSION := $(VCS_TAG)
+endif
 
-vet:
-	@echo ">> vetting code"
-	@$(GO) vet ./...
+TAG_LATEST ?= false
 
-build: promu
-	@echo ">> building binaries"
-	@$(PROMU) build --prefix $(PREFIX)
+platform_temp = $(subst -, ,$(ARCH))
+GOOS = $(word 1, $(platform_temp))
+GOARCH = $(word 2, $(platform_temp))
 
-tarball: promu
-	@echo ">> building release tarball"
-	@$(PROMU) tarball --prefix $(PREFIX) $(BIN_DIR)
+BASE64_PASSWORD = ZHVtbXlWYWx1ZQ==
+# timestamp value that is formatted according to the RFC3339 standard
+BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
-crossbuild: promu
-	@echo ">> building"
-	@$(PROMU) crossbuild
+# Set default base image dynamically for each arch
+ifeq ($(GOARCH),amd64)
+	DOCKERFILE ?= Dockerfile.$(BIN)
+endif
 
-docker:
-	@echo ">> building docker image"
-	@docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
+GIT_COMMIT=$(shell git rev-parse HEAD)
+GIT_SHORT_COMMIT=$(shell git rev-parse --short HEAD)
+IMAGE_NAME = $(DOCKER_REGISTRY)/ebtpc-commons/$(BIN)
+# IMAGE_NAME = $(DOCKER_REGISTRY)/library/$(BIN)
+IMAGE_NAME_LC = $(shell echo $(IMAGE_NAME) | tr A-Z a-z)
 
-release:
-	@$(PROMU) crossbuild tarballs
-	@$(PROMU) release .tarballs
-	
-promu:
-	@GOOS=$(shell uname -s | tr A-Z a-z) \
-		GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-		$(GO) get -u github.com/prometheus/promu
+VCS_USER ?= danifv27
+VCS_PASSWORD = $(shell echo $(BASE64_PASSWORD_DANIFV27) | base64 --decode)
+VCS_PROTOCOL ?= https
+VCS_URL ?= github.com/danifv27/exporter-exporter.git
+VCS_REF:= $(shell git rev-parse HEAD)
+VCS_BRANCH := $(shell git symbolic-ref --short -q HEAD)
 
+PHONY: init 
+init: ./go.mod ## Initialize the module
 
-.PHONY: all style format build crossbuild test vet tarball docker promu
+./go.mod:
+	$(Q)go mod init $(PKG); go mod tidy
+
+.PHONY: all
+all: test build
+
+# GNU make required targets declared as .PHONY to be explicit
+BUILD_PHONY_TARGETS = build-linux-amd64 build-darwin-amd64 build-windows-amd64
+.PHONY: $(BUILD_PHONY_TARGETS)
+$(BUILD_PHONY_TARGETS): build-%:
+	$(Q)$(MAKE) --no-print-directory ARCH=$* build
+
+PHONY: build
+build: output/$(GOOS)/$(GOARCH)/bin/$(BIN)
+
+output/$(GOOS)/$(GOARCH)/bin/$(BIN): build-dirs
+	@echo "Building binary: $@ $(VERSION)"
+	GOOS=$(GOOS) \
+	GOARCH=$(GOARCH) \
+	VERSION=$(VERSION) \
+	REVISION=$(REVISION) \
+	BRANCH=$(VCS_BRANCH) \
+	BUILDUSER=$(VCS_USER) \
+	PKG=$(PKG) \
+	BIN=$(BIN) \
+	OUTPUT_DIR=./output/$(GOOS)/$(GOARCH)/bin \
+	./scripts/build.sh
+
+PHONY: local
+local: build-dirs ## Build application for the local arch
+	GOOS=$(GOOS) \
+	GOARCH=$(GOARCH) \
+	VERSION=$(VERSION) \
+	REVISION=$(REVISION) \
+	BRANCH=$(VCS_BRANCH) \
+	BUILDUSER=$(VCS_USER) \
+	PKG=$(PKG) \
+	BIN=$(BIN) \
+	OUTPUT_DIR=$$(pwd)/output/$(GOOS)/$(GOARCH)/bin \
+	scripts/build.sh
+
+PHONY: build-dirs
+build-dirs:
+	@mkdir -p output/$(GOOS)/$(GOARCH)/bin
+	@mkdir -p .go/src/$(PKG) .go/pkg .go/bin .go/std/$(GOOS)/$(GOARCH) .go/go-build
+
+CLEAN_PHONY_TARGETS = clean-linux-amd64 clean-darwin-amd64 clean-windows-amd64
+.PHONY: $(CLEAN_PHONY_TARGETS)
+$(CLEAN_PHONY_TARGETS): clean-%:
+	$(Q)$(MAKE) --no-print-directory ARCH=$* clean
+
+.PHONY: clean
+clean-%:
+	$(Q)$(MAKE) --no-print-directory ARCH=$* clean
+
+clean: ## Clean out all generated items
+	$(Q)echo "Cleaning binary: $(pwd)/output/$(GOOS)/$(GOARCH)/bin/${BIN}"
+	$(Q)test -e $$(pwd)/output/$(GOOS)/$(GOARCH)/bin/${BIN} || rm $$(pwd)/output/$(GOOS)/$(GOARCH)/bin/${BIN}
+
+.PHONY: coverage
+coverage: ## Generates the total code coverage of the project
+	$(Q)$(eval COVERAGE_DIR=$(shell mktemp -d))
+	$(Q)mkdir -p $(COVERAGE_DIR)/tmp
+	$(Q)for j in $$(go list ./... | grep -v '/vendor/' | grep -v '/ext/'); do go test -covermode=count -coverprofile=$(COVERAGE_DIR)/$$(basename $$j).out $$j > /dev/null 2>&1; done
+	$(Q)echo 'mode: count' > $(COVERAGE_DIR)/tmp/full.out
+	$(Q)tail -q -n +2 $(COVERAGE_DIR)/*.out >> $(COVERAGE_DIR)/tmp/full.out
+	$(Q)@go tool cover -func=$(COVERAGE_DIR)/tmp/full.out | tail -n 1 | sed -e 's/^.*statements)[[:space:]]*//' -e 's/%//'
+
+.PHONY: package
+package: ## Create a docker image of the project
+	@echo "Packaging image: $(VERSION) [$(GIT_COMMIT)]"
+	$(Q)docker build --no-cache \
+		--label 'org.label-schema.vcs-url=$(VCS_PROTOCOL)://$(VCS_USER):$(VCS_PASSWORD)@$(VCS_URL)' \
+		--label 'org.label-schema.vcs-ref=$(VCS_REF)' \
+		--label 'org.label-schema.version=$(VERSION)' \
+		--label 'org.label-schema.name=$(BIN)', \
+		--label 'org.label-schema.build-date=$(BUILD_DATE)' \
+		--label 'org.label-schema.vendor=adidas' \
+		$(PROGRESS) \
+		-t $(IMAGE_NAME_LC):local -f $(DOCKERFILE) .
+
+.PHONY: tag
+tag: ## Tag image created by package with latest, git commit and version
+	@echo "Tagging image: ${VERSION} $(GIT_COMMIT)"
+	$(Q)docker tag $(IMAGE_NAME_LC):local $(IMAGE_NAME_LC):$(GIT_SHORT_COMMIT)
+	$(Q)docker tag $(IMAGE_NAME_LC):local $(IMAGE_NAME_LC):${VERSION}
+
+.PHONY: push
+push: tag ## Push tagged images to docker registry
+	@echo "Pushing docker image to registry: ${VERSION} $(GIT_SHORT_COMMIT)"
+#	$(Q)(echo $(BASE64_PASSWORD) | base64 --decode | docker login -u danifv27 --password-stdin $(DOCKER_REGISTRY))
+	$(Q)docker push $(IMAGE_NAME_LC):$(GIT_SHORT_COMMIT)
+	$(Q)docker push $(IMAGE_NAME_LC):${VERSION}
+#	$(Q)docker logout $(DOCKER_REGISTRY)
+
+.PHONY: help
+help: ## Show This Help
+	@for line in $$(cat Makefile | grep "##" | grep -v "grep" | sed  "s/:.*##/:/g" | sed "s/\ /!/g"); do verb=$$(echo $$line | cut -d ":" -f 1); desc=$$(echo $$line | cut -d ":" -f 2 | sed "s/!/\ /g"); printf "%-30s--%s\n" "$$verb" "$$desc"; done
+
+.PHONY: test
+test: unit_test ## Run all available tests
+
+.PHONY: unit_test
+unit_test: ## Run all available unit tests
+	go test -v $(shell go list ./... | grep -v /vendor/)

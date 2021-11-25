@@ -146,7 +146,7 @@ function cached_curl() {
     else
         if [[ "$_curl_send" = true ]]; then
             # There is a problem with the request, invalidate the cache
-            verbose_print "Invalidating cache ${_cacheFile}"
+            verbose_print "(${_curl_http_code}) Invalidating cache ${_cacheFile}"
             rm -f ${_cacheFile}
         fi
     fi

@@ -2,4 +2,4 @@ bct-reference-data-service-api,$REFERENCE_DATA_API_KEY,https://sit-bctf.api.3str
 composite-product-api,$COMPOSITE_API_KEY,https://sit-bctf.api.3stripes.io/composite-product-api/actuator/health
 notification-service,$NOTIFICATION_SERVICE_API_KEY,https://sit-bctf.api.3stripes.io/notification-service/actuator/health
 size-translation-service,$SIZE_TRANSLATION_API_KEY,https://sit-bctf.api.3stripes.io/size-translation-service/actuator/health
-user-preference-api,$USER_PREFERENCE_SERVICE_API_KEY,https://sit-bctf.api.3stripes.io/user-preference-api/actuator/health
+user-preference-service,$USER_PREFERENCE_SERVICE_API_KEY,https://sit-bctf.api.3stripes.io/user-preference-service/actuator/health

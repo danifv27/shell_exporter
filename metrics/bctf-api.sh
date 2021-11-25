@@ -96,11 +96,21 @@ function verbose_print() {
     fi
 }
 
+function my_curl() {
+    local _response
+
+    _response=$(curl -w "%{http_code}" -X ${_method} -sI --retry 10 --retry-delay 5 -H "Authorization: Bearer ${_token}" -H "api-key: ${_apikey}" ${_url};)    
+
+    echo "${_response}"
+}
+
 function cached_curl() {
     local _progr
     local _hash
     local _apikey
     local _url
+    local _curl_response
+    local _curl_send
     
     _apikey=$1
     _url=$2
@@ -108,15 +118,37 @@ function cached_curl() {
     _prog="$(basename $0)"
     _hash=$(echo "${_apikey}${_url}" | md5sum | cut -f1 -d ' ')
     _cacheFile="${_dir}/${_hash}"
+    verbose_print "Cache file: ${_cacheFile}"
+    _tempFile=$(mktemp)
+    _curl_send=false
     if [[ -f ${_cacheFile} ]]; then
         if [[ $(expr $(date +%s) - $(date -r "$_cacheFile" +%s)) -ge $_expires ]]; then
             verbose_print "Cache expired, requesting to ${_url}"
-            curl -X ${_method} -sI -H "Authorization: Bearer ${_token}" -H "api-key: ${_apikey}" ${_url} > $_cacheFile
+            # make it retry ten times and sleep five seconds before retrying:
+            # print the http code: -w "%{http_code}"
+            _curl_response="$(my_curl)"
+            _curl_send=true
         fi
     else
         verbose_print "No cache found, requesting to ${_url}"
         mkdir -p ${_dir}
-        curl -X ${_method} -sI -H "Authorization: Bearer ${_token}" -H "api-key: ${_apikey}" ${_url} > $_cacheFile
+        #  make it retry ten times and sleep five seconds before retrying:--retry 10 --retry-delay 5
+        # print the http code: -w "%{http_code}"
+        _curl_response="$(my_curl)"
+        _curl_send=true
+    fi
+    # verbose_print "cUrl: ${_curl_response}"
+    _curl_http_code=$(tail -n1 <<< "$_curl_response")  # get the last line
+    # verbose_print "cUrl http code: ${_curl_http_code}"
+    if [[ "${_curl_http_code}" -eq 200 ]] ; then
+        verbose_print "caching into ${_cacheFile}"
+        echo "$_curl_response" > ${_cacheFile}
+    else
+        if [[ "$_curl_send" = true ]]; then
+            # There is a problem with the request, invalidate the cache
+            verbose_print "Invalidating cache ${_cacheFile}"
+            rm -f ${_cacheFile}
+        fi
     fi
 }
 
@@ -135,35 +167,41 @@ function main() {
     envsubst < ${_target} > /tmp/target.txt
     # Each line <apiname>,<apikey>,<url>
     while read p; do
+        case $p in
+            ''|\#*) continue ;;         # skip blank lines and lines starting with #
+        esac
         _apiname=$(echo $p | cut -f1 -d ',');
         _apikey=$(echo $p | cut -f2 -d ',');
         _url=$(echo $p | cut -f3 -d ',');
         cached_curl ${_apikey} ${_url}
-        while IFS=':' read key value; do
-            # trim whitespace in "value"
-            value=${value##+([[:space:]])}; value=${value%%+([[:space:]])}
-            case $key in
-                x-ratelimit-limit-second)
-                    _xRatelimitSecond=${value}
-                    ;;
-                x-ratelimit-limit-hour)
-                    _xRatelimitHour=${value}
-                    ;;
-                x-ratelimit-remaining-second)
-                    _xRatelimitRemainingSecond=${value}
-                    ;;
-                x-ratelimit-remaining-hour)
-                    _xRatelimitRemainingHour=${value}
-                    ;;
-                # HTTP*) read _proto _status _msg <<< "$key{$value:+:$value}"
-                #     ;;
-            esac
-        done < ${_cacheFile}
-        echo "${_apiname}:${_apikey}:x-ratelimit-remaining-hour:${_xRatelimitRemainingHour##[[:space:]]}";
-        echo "${_apiname}:${_apikey}:x-ratelimit-remaining-second:${_xRatelimitRemainingSecond##[[:space:]]}";
-        echo "${_apiname}:${_apikey}:x-ratelimit-limit-hour:${_xRatelimitHour##[[:space:]]}";
-        echo "${_apiname}:${_apikey}:x-ratelimit-limit-second:${_xRatelimitSecond##[[:space:]]}";
+        if [[ -f ${_cacheFile} ]]; then
+            while IFS=':' read key value; do
+                # trim whitespace in "value"
+                value=${value##+([[:space:]])}; value=${value%%+([[:space:]])}
+                case $key in
+                    x-ratelimit-limit-second)
+                        _xRatelimitSecond=${value}
+                        ;;
+                    x-ratelimit-limit-hour)
+                        _xRatelimitHour=${value}
+                        ;;
+                    x-ratelimit-remaining-second)
+                        _xRatelimitRemainingSecond=${value}
+                        ;;
+                    x-ratelimit-remaining-hour)
+                        _xRatelimitRemainingHour=${value}
+                        ;;
+                    HTTP*) read _proto _status _msg <<< "$key{$value:+:$value}"
+                        ;;
+                esac
+            done < ${_cacheFile}
+            echo "${_apiname}:${_apikey}:x-ratelimit-remaining-hour:${_xRatelimitRemainingHour##[[:space:]]}";
+            echo "${_apiname}:${_apikey}:x-ratelimit-remaining-second:${_xRatelimitRemainingSecond##[[:space:]]}";
+            echo "${_apiname}:${_apikey}:x-ratelimit-limit-hour:${_xRatelimitHour##[[:space:]]}";
+            echo "${_apiname}:${_apikey}:x-ratelimit-limit-second:${_xRatelimitSecond##[[:space:]]}";
+        fi;
     done < /tmp/target.txt
+    rm /tmp/target.txt
 }
 
 main "$@"

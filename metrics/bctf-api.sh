@@ -15,11 +15,11 @@ function parse_params() {
         case $_param in
             -d | --dir)
                 # Remove slash
-                _dir="${1%/}"
+                export SHELL_EXPORTER_CACHE_DIR="${1%/}"
                 shift
                 ;;
             -e | --expires)
-                _expires=${1}
+                export SHELL_EXPORTER_CACHE_EXPIRES=${1}
                 shift
                 ;;
             -f | --force)
@@ -51,6 +51,7 @@ function parse_params() {
 function override_params() {
 
     _method="GET"
+
     # Default curl cache time in seconds
     _expires=${SHELL_EXPORTER_CACHE_EXPIRES:-60}
     _dir=${SHELL_EXPORTER_CACHE_DIR:-"./.cache"}
@@ -85,7 +86,6 @@ Arguments:
 Overrides:
     SHELL_EXPORTER_CACHE_EXPIRES      Curl expiry age (default 60s).
     SHELL_EXPORTER_CACHE_DIR          Cache folder
-    SHELL_EXPORTER_CACHE_TOKEN        Authorization token to use
 EOF
 }
 

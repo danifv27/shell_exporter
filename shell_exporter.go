@@ -24,6 +24,7 @@ var (
 	configFile    = flag.String("config.file", "config.yml", "shell exporter configuration file.")
 	listenAddress = flag.String("web.listen-address", ":9191", "The address to listen on for HTTP requests.")
 	metricsPath   = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
+	logLevel      = flag.String("log.level", "Info", "log level.")
 )
 
 type Config struct {
@@ -199,6 +200,8 @@ func (s *Shell) collect() {
 func main() {
 	flag.Parse()
 
+	log.Base().SetLevel(*logLevel)
+
 	if *showVersion {
 		fmt.Fprintf(os.Stderr, "Version: %s\n", versionStr())
 		return
@@ -223,7 +226,6 @@ func main() {
 			</body>
 			</html>`))
 	})
-
 	log.Infoln("Start Server and Listening on", *listenAddress)
 	http.ListenAndServe(*listenAddress, nil)
 }

@@ -56,7 +56,7 @@ function override_params() {
     _expires=${SHELL_EXPORTER_CACHE_EXPIRES:-60}
     _dir=${SHELL_EXPORTER_CACHE_DIR:-"./.cache"}
     if [[ -z ${_token} ]]; then
-        _token=$([[ -f ${_token} ]] && cat /token/token.txt)
+        _token=$([[ -f /token/token.txt ]] && cat /token/token.txt)
     fi
 
     if [ ! -z ${SHELL_EXPORTER_APIKEY+x} ]; then
